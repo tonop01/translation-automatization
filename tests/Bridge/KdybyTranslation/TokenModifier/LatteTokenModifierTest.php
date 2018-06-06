@@ -3,7 +3,7 @@
 namespace Efabrica\TranslationsAutomatization\Tests\Bridge\KdybyTranslation\TokenModifier;
 
 use Efabrica\TranslationsAutomatization\Bridge\KdybyTranslation\TokenModifier\LatteTokenModifier;
-use Efabrica\TranslationsAutomatization\Bridge\KdybyTranslation\TokenModifier\ParamsExtractorTokenModifier;
+use Efabrica\TranslationsAutomatization\Bridge\KdybyTranslation\TokenModifier\LatteParamsExtractorTokenModifier;
 use Efabrica\TranslationsAutomatization\Tests\TokenModifier\AbstractTokenModifierTest;
 use Efabrica\TranslationsAutomatization\Tokenizer\TokenCollection;
 
@@ -27,7 +27,7 @@ class LatteTokenModifierTest extends AbstractTokenModifierTest
     {
         $tokenModifier = new LatteTokenModifier();
         $originalTokens = $this->copyTokens($this->tokenCollection->getTokens());
-        $paramsExtractorTokenModifier = new ParamsExtractorTokenModifier();
+        $paramsExtractorTokenModifier = new LatteParamsExtractorTokenModifier();
         $newTokenCollection = $tokenModifier->modifyAll($paramsExtractorTokenModifier->modifyAll($this->tokenCollection));
         $newTokens = $newTokenCollection->getTokens();
         $this->assertInstanceOf(TokenCollection::class, $newTokenCollection);

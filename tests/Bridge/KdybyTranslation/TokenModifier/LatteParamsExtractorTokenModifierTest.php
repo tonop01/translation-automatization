@@ -2,16 +2,16 @@
 
 namespace Efabrica\TranslationsAutomatization\Tests\Bridge\KdybyTranslation\TokenModifier;
 
-use Efabrica\TranslationsAutomatization\Bridge\KdybyTranslation\TokenModifier\ParamsExtractorTokenModifier;
+use Efabrica\TranslationsAutomatization\Bridge\KdybyTranslation\TokenModifier\LatteParamsExtractorTokenModifier;
 use Efabrica\TranslationsAutomatization\Tests\TokenModifier\AbstractTokenModifierTest;
 use Efabrica\TranslationsAutomatization\Tokenizer\Token;
 use Efabrica\TranslationsAutomatization\Tokenizer\TokenCollection;
 
-class ParamsExtractorTokenModifierTest extends AbstractTokenModifierTest
+class LatteParamsExtractorTokenModifierTest extends AbstractTokenModifierTest
 {
     public function testDefault()
     {
-        $tokenModifier = new ParamsExtractorTokenModifier();
+        $tokenModifier = new LatteParamsExtractorTokenModifier();
         $tokenCollection = new TokenCollection('/path/to/file');
         $tokenCollection->addToken(new Token('This is my original text with {$param}', '<div>This is my original text with {$param}</div>'));
         $newTokenCollection = $tokenModifier->modifyAll($tokenCollection);
@@ -26,7 +26,7 @@ class ParamsExtractorTokenModifierTest extends AbstractTokenModifierTest
 
     public function testParamFunction()
     {
-        $tokenModifier = new ParamsExtractorTokenModifier();
+        $tokenModifier = new LatteParamsExtractorTokenModifier();
         $tokenCollection = new TokenCollection('/path/to/file');
         $tokenCollection->addToken(new Token('This is my original text with {strtolower($param->title)}', '<div>This is my original text with {strtolower($param->title)}</div>'));
         $newTokenCollection = $tokenModifier->modifyAll($tokenCollection);
@@ -41,7 +41,7 @@ class ParamsExtractorTokenModifierTest extends AbstractTokenModifierTest
 
     public function testParamObject()
     {
-        $tokenModifier = new ParamsExtractorTokenModifier();
+        $tokenModifier = new LatteParamsExtractorTokenModifier();
         $tokenCollection = new TokenCollection('/path/to/file');
         $tokenCollection->addToken(new Token('This is my original text with {$param->title}', '<div>This is my original text with {$param->title}</div>'));
         $newTokenCollection = $tokenModifier->modifyAll($tokenCollection);
@@ -56,7 +56,7 @@ class ParamsExtractorTokenModifierTest extends AbstractTokenModifierTest
 
     public function testStaticParamsNameMap()
     {
-        $tokenModifier = new ParamsExtractorTokenModifier(['$param' => 'my_param']);
+        $tokenModifier = new LatteParamsExtractorTokenModifier(['$param' => 'my_param']);
         $tokenCollection = new TokenCollection('/path/to/file');
         $tokenCollection->addToken(new Token('This is my original text with {$param}', '<div>This is my original text with {$param}</div>'));
         $newTokenCollection = $tokenModifier->modifyAll($tokenCollection);
@@ -71,7 +71,7 @@ class ParamsExtractorTokenModifierTest extends AbstractTokenModifierTest
 
     public function testStaticParamsValueMap()
     {
-        $tokenModifier = new ParamsExtractorTokenModifier([], ['$param' => 'my_value']);
+        $tokenModifier = new LatteParamsExtractorTokenModifier([], ['$param' => 'my_value']);
         $tokenCollection = new TokenCollection('/path/to/file');
         $tokenCollection->addToken(new Token('This is my original text with {$param}', '<div>This is my original text with {$param}</div>'));
         $newTokenCollection = $tokenModifier->modifyAll($tokenCollection);
@@ -86,7 +86,7 @@ class ParamsExtractorTokenModifierTest extends AbstractTokenModifierTest
 
     public function testStaticParamsNameMapAndStaticParamsValueMap()
     {
-        $tokenModifier = new ParamsExtractorTokenModifier(['$param' => 'my_param'], ['$param' => 'my_value']);
+        $tokenModifier = new LatteParamsExtractorTokenModifier(['$param' => 'my_param'], ['$param' => 'my_value']);
         $tokenCollection = new TokenCollection('/path/to/file');
         $tokenCollection->addToken(new Token('This is my original text with {$param}', '<div>This is my original text with {$param}</div>'));
         $newTokenCollection = $tokenModifier->modifyAll($tokenCollection);

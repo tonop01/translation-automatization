@@ -5,7 +5,7 @@ namespace Efabrica\TranslationsAutomatization\Bridge\KdybyTranslation\TokenModif
 use Efabrica\TranslationsAutomatization\Tokenizer\Token;
 use Efabrica\TranslationsAutomatization\TokenModifier\TokenModifier;
 
-class ParamsExtractorTokenModifier extends TokenModifier
+class LatteParamsExtractorTokenModifier extends TokenModifier
 {
     private $staticParamsNameMap = [];
 
