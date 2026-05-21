@@ -100,4 +100,87 @@ class LatteTranslationAnalyzer
             }
         }
     }
+
+    /**
+     * Detects visible plain-text content in Latte templates that is not wrapped in a
+     * translation macro/filter (e.g. <strong>Typ:</strong>).
+     *
+     * @return array<int, array{file: string, line: int, text: string}>
+     */
+    public function findHardcodedTexts(SplFileInfo $file): array
+    {
+        $content = file_get_contents($file->getPathname());
+        if ($content === false || $content === '') {
+            return [];
+        }
+
+        $content = $this->blankOutNonTextRegions($content);
+
+        $results = [];
+        $lines = explode("\n", $content);
+        foreach ($lines as $idx => $line) {
+            $stripped = $this->stripLatteExpressions($line);
+            $count = preg_match_all('/>([^<>]+)</', $stripped, $matches);
+            if ($count === false || $count === 0) {
+                continue;
+            }
+
+            foreach ($matches[1] as $text) {
+                $decoded = trim(html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+                if (!$this->isVisibleTranslatableText($decoded)) {
+                    continue;
+                }
+
+                $results[] = [
+                    'file' => $file->getPathname(),
+                    'line' => $idx + 1,
+                    'text' => $decoded,
+                ];
+            }
+        }
+
+        return $results;
+    }
+
+    /**
+     * Replaces Latte block comments, <script> and <style> blocks with empty whitespace
+     * so they cannot produce false positives while preserving line numbers.
+     */
+    private function blankOutNonTextRegions(string $content): string
+    {
+        $patterns = [
+            '/\{\*.*?\*\}/s',
+            '/<script\b[^>]*>.*?<\/script>/is',
+            '/<style\b[^>]*>.*?<\/style>/is',
+            '/<!--.*?-->/s',
+            '/<(i|span)\b[^>]*\bclass\s*=\s*["\'][^"\']*\bmaterial-(?:icons|symbols)[\w-]*[^"\']*["\'][^>]*>.*?<\/\1>/is',
+        ];
+
+        foreach ($patterns as $pattern) {
+            $content = preg_replace_callback($pattern, static function (array $match): string {
+                return str_repeat("\n", substr_count($match[0], "\n"));
+            }, $content) ?? $content;
+        }
+
+        return $content;
+    }
+
+    private function stripLatteExpressions(string $line): string
+    {
+        $previous = null;
+        while ($previous !== $line) {
+            $previous = $line;
+            $line = preg_replace('/\{[^{}]*\}/', '', $line) ?? $line;
+        }
+        return $line;
+    }
+
+    private function isVisibleTranslatableText(string $text): bool
+    {
+        if ($text === '') {
+            return false;
+        }
+
+        return preg_match('/\p{L}{2,}/u', $text) === 1;
+    }
 }

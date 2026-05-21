@@ -141,4 +141,26 @@ class CodeAnalyzer
 
         return array_values(array_unique($expandedDirectories));
     }
+
+    /**
+     * @return array<int, array{file: string, line: int, text: string}>
+     */
+    public function findLatteHardcodedTexts(): array
+    {
+        $results = [];
+        foreach ($this->directories as $directory) {
+            if (!is_dir($directory)) {
+                continue;
+            }
+            $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($directory));
+            foreach ($iterator as $file) {
+                if (!$file->isFile() || $file->getExtension() !== 'latte') {
+                    continue;
+                }
+                $results = array_merge($results, $this->latteTranslationAnalyzer->findHardcodedTexts($file));
+            }
+        }
+
+        return $results;
+    }
 }

@@ -15,6 +15,8 @@ class CheckTranslationsDeepCommand extends Command
 {
     private const IGNORE_DEEP_CHECK_MARKER = '@Ignore transka deep check';
 
+    private const IGNORE_TRANSLATION_MARKER = '@Ignore translation';
+
     /**
      * @var array<string, array<int, string>>
      */
@@ -55,7 +57,9 @@ class CheckTranslationsDeepCommand extends Command
         $hideDynamicWarnings = (bool) $input->getOption('hide-dynamic-warnings');
         $dirs = ['./app', './src'];
 
-        $results = (new CodeAnalyzer($dirs))->analyzeDirectories();
+        $codeAnalyzer = new CodeAnalyzer($dirs);
+        $results = $codeAnalyzer->analyzeDirectories();
+        $hardcodedTexts = $codeAnalyzer->findLatteHardcodedTexts();
         $dictionaryKeys = $this->collectDictionaryKeys($dictionaries);
         $statistics = [
             'callsTotal' => count($results),
@@ -158,6 +162,19 @@ class CheckTranslationsDeepCommand extends Command
                 }
             }
         }
+        foreach ($hardcodedTexts as $hardcoded) {
+            if ($this->isHardcodedTextIgnored($hardcoded)) {
+                $statistics['ignoredByCode']++;
+                continue;
+            }
+            $errors[] = sprintf(
+                'Hardcoded untranslated text "%s" in file: %s:%s',
+                $hardcoded['text'],
+                $hardcoded['file'],
+                $hardcoded['line']
+            );
+        }
+
         $output->writeln('', OutputInterface::VERBOSITY_VERY_VERBOSE);
         foreach (array_unique($errors) as $error) {
             $output->writeln($error, OutputInterface::VERBOSITY_VERY_VERBOSE);
@@ -172,7 +189,21 @@ class CheckTranslationsDeepCommand extends Command
         $output->writeln('');
         $output->writeln('<comment>' . count($errors) . ' errors found</comment>');
         $output->writeln('<comment>' . count(array_unique($warnings)) . ' unresolved dynamic keys found</comment>');
+        $this->writeIgnoreUsageHelp($output);
         return count($errors);
+    }
+
+    private function writeIgnoreUsageHelp(OutputInterface $output): void
+    {
+        $output->writeln('');
+        $output->writeln('<info>Ako ignorovat riadok pri kontrole prekladov:</info>');
+        $output->writeln('  Nad riadok, ktory ma byt vynechany, napis Latte komentar s markerom:');
+        $output->writeln('    <comment>{* @Ignore translation *}</comment>');
+        $output->writeln('    <strong>Typ:</strong>');
+        $output->writeln('');
+        $output->writeln('  Funguje aj povodny dlhsi marker <comment>{* @Ignore transka deep check *}</comment>.');
+        $output->writeln('  Pri Latte hardcoded textoch mozes marker dat aj na ten isty riadok.');
+        $output->writeln('  Ignorovane riadky sa zapocitavaju do statistiky "Ignored by code".');
     }
 
     private function collectStatistics(array &$statistics, array $call): void
@@ -480,12 +511,31 @@ class CheckTranslationsDeepCommand extends Command
         }
 
         $lines = $this->getFileLines($file);
-        $previousLine = $lines[$line - 2] ?? null;
-        if (!is_string($previousLine)) {
+        return $this->lineHasIgnoreMarker($lines[$line - 2] ?? null);
+    }
+
+    /**
+     * @param array{file: string, line: int, text: string} $hardcoded
+     */
+    private function isHardcodedTextIgnored(array $hardcoded): bool
+    {
+        $lines = $this->getFileLines($hardcoded['file']);
+        if ($this->lineHasIgnoreMarker($lines[$hardcoded['line'] - 1] ?? null)) {
+            return true;
+        }
+        if ($hardcoded['line'] <= 1) {
             return false;
         }
+        return $this->lineHasIgnoreMarker($lines[$hardcoded['line'] - 2] ?? null);
+    }
 
-        return strpos($previousLine, self::IGNORE_DEEP_CHECK_MARKER) !== false;
+    private function lineHasIgnoreMarker(?string $line): bool
+    {
+        if (!is_string($line)) {
+            return false;
+        }
+        return strpos($line, self::IGNORE_DEEP_CHECK_MARKER) !== false
+            || strpos($line, self::IGNORE_TRANSLATION_MARKER) !== false;
     }
 
     /**
