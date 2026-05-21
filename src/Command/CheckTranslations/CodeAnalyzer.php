@@ -2,9 +2,10 @@
 
 namespace Efabrica\TranslationsAutomatization\Command\CheckTranslations;
 
-
 use Efabrica\TranslationsAutomatization\Command\CheckFormKeys\ClassMethodArgVisitor;
 use Exception;
+use PhpParser\Error;
+use PhpParser\Node;
 use PhpParser\NodeTraverser;
 use PhpParser\ParserFactory;
 use RecursiveDirectoryIterator;
@@ -13,28 +14,41 @@ use SplFileInfo;
 
 class CodeAnalyzer
 {
-    private $directories;
+    private array $directories;
 
-    private $translationFindConfig;
+    private LatteTranslationAnalyzer $latteTranslationAnalyzer;
 
-    public function __construct(array $directories, array $translationFindConfig)
+    public function __construct(array $directories, ?LatteTranslationAnalyzer $latteTranslationAnalyzer = null)
     {
         $this->directories = $directories;
-        $this->translationFindConfig = $translationFindConfig;
+        $this->latteTranslationAnalyzer = $latteTranslationAnalyzer ?? new LatteTranslationAnalyzer();
     }
 
     public function analyzeDirectories(): array
     {
-        $result = [];
-        foreach ($this->directories as $directory) {
+        $directories = $this->directories;
+        $indexDirectories = $this->expandDirectories($this->directories);
+        $phpFiles = [];
+        foreach ($indexDirectories as $directory) {
             if (is_dir($directory)) {
-                $result[] = $this->analyzeDirectory($directory);
+                $phpFiles = array_merge($phpFiles, $this->collectPhpFiles($directory));
+            }
+        }
+
+        $parser = (new ParserFactory())->createForNewestSupportedVersion();
+        $astMap = $this->parseFiles($phpFiles, $parser);
+        $classIndex = ProjectClassIndex::fromAst(array_merge(...array_values($astMap)), new TranslationKeyExpressionResolver());
+
+        $result = [];
+        foreach ($directories as $directory) {
+            if (is_dir($directory)) {
+                $result[] = $this->analyzeDirectory($directory, $parser, $astMap, $classIndex);
             }
         }
         return array_merge(...$result);
     }
 
-    private function analyzeDirectory(string $directory): array
+    private function analyzeDirectory(string $directory, $parser, array $astMap, ProjectClassIndex $classIndex): array
     {
         $translateCalls = [];
         $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($directory));
@@ -44,7 +58,7 @@ class CodeAnalyzer
             }
             $code = file_get_contents($file->getPathname());
             if ($file->getExtension() === 'php') {
-                $translateCalls[] = $this->analyzeCode($code, $file->getPathname());
+                $translateCalls[] = $this->analyzeCode($code, $file->getPathname(), $parser, $astMap[$file->getPathname()] ?? null, $classIndex);
             }
             if ($file->getExtension() === 'latte') {
                 $translateCalls[] = $this->findInLatte($file);
@@ -56,37 +70,97 @@ class CodeAnalyzer
 
     private function findInLatte(SplFileInfo $file): array
     {
-        $translateCalls = [];
-        $regex = "/\{_'[^']*'\}/";
-        $content = file_get_contents($file->getPathname());
-        if (preg_match_all($regex, $content, $matches)) {
-            $lines = file($file->getPathname());
-            foreach ($matches[0] as $match) {
-                foreach ($lines as $lineNumber => $lineContent) {
-                    if (strpos($lineContent, $match) !== false) {
-                        $translateCalls[] = ['key' => substr($match, 3, -2), 'file' => $file->getPathname(), 'line' => $lineNumber + 1, 'method' => 'in_latte'];
-                    }
-                }
-            }
-        }
-        return $translateCalls;
+        return $this->latteTranslationAnalyzer->analyze($file);
     }
 
-    private function analyzeCode(string $code, string $filePath): array
+    private function analyzeCode(string $code, string $filePath, $parser, ?array $ast, ProjectClassIndex $classIndex): array
     {
-        $parser = (new ParserFactory())->createForNewestSupportedVersion();
         $traverser = new NodeTraverser();
         $result = [];
 
-        $traverser->addVisitor(new ClassMethodArgVisitor($result, $filePath, $this->translationFindConfig));
+        $traverser->addVisitor(new ClassMethodArgVisitor($result, $filePath, $classIndex, new TranslationKeyExpressionResolver()));
 
         try {
-            $ast = $parser->parse($code);
+            $ast ??= $parser->parse($code);
             $traverser->traverse($ast);
         } catch (Exception $e) {
             echo "Error analyzing file $filePath: " . $e->getMessage() . PHP_EOL;
         }
 
         return $result;
+    }
+
+    /**
+     * @return string[]
+     */
+    private function collectPhpFiles(string $directory): array
+    {
+        $files = [];
+        $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($directory));
+        foreach ($iterator as $file) {
+            if ($file->isFile() && $file->getExtension() === 'php') {
+                $files[] = $file->getPathname();
+            }
+        }
+
+        return $files;
+    }
+
+    /**
+     * @param string[] $phpFiles
+     * @return array<string, Node[]>
+     */
+    private function parseFiles(array $phpFiles, $parser): array
+    {
+        $astMap = [];
+        foreach ($phpFiles as $phpFile) {
+            try {
+                $parsed = $parser->parse((string) file_get_contents($phpFile));
+                if ($parsed !== null) {
+                    $astMap[$phpFile] = $parsed;
+                }
+            } catch (Error $error) {
+                echo "Error analyzing file $phpFile: " . $error->getMessage() . PHP_EOL;
+            }
+        }
+
+        return $astMap;
+    }
+
+    /**
+     * @param string[] $directories
+     * @return string[]
+     */
+    private function expandDirectories(array $directories): array
+    {
+        $expandedDirectories = $directories;
+        $coreVendorDirectory = './vendor/notcms/core/src';
+        if (is_dir($coreVendorDirectory)) {
+            $expandedDirectories[] = $coreVendorDirectory;
+        }
+
+        return array_values(array_unique($expandedDirectories));
+    }
+
+    /**
+     * @return array<int, array{file: string, line: int, text: string}>
+     */
+    public function findLatteHardcodedTexts(): array
+    {
+        $results = [];
+        foreach ($this->directories as $directory) {
+            if (!is_dir($directory)) {
+                continue;
+            }
+            $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($directory));
+            foreach ($iterator as $file) {
+                if (!$file->isFile() || $file->getExtension() !== 'latte') {
+                    continue;
+                }
+                $results = array_merge($results, $this->latteTranslationAnalyzer->findHardcodedTexts($file));
+            }
+        }
+
+        return $results;
     }
 }

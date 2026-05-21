@@ -13,7 +13,7 @@ use Symfony\Component\Console\Output\OutputInterface;
 
 class CheckTranslationsCommand extends Command
 {
-    private $translationFindConfig;
+    private array $translationFindConfig;
 
     public function __construct(?string $name = null)
     {
@@ -38,7 +38,7 @@ class CheckTranslationsCommand extends Command
         if (!is_file($input->getArgument('config'))) {
             throw new InvalidArgumentException('File "' . $input->getArgument('config') . '" does not exist');
         }
-        parse_str($input->getOption('params'), $params);
+        parse_str((string) $input->getOption('params'), $params);
         extract($params);
 
         $checkDictionariesConfig = require $input->getArgument('config');
@@ -57,10 +57,10 @@ class CheckTranslationsCommand extends Command
         $errors = [];
         $dirs = ['./app', './src'];
 
-        $exclude = json_decode($input->getOption('exclude') ?? '', true) ?? [];
-        $include = json_decode($input->getOption('include') ?? '', true) ?? [];
+        $exclude = json_decode((string) ($input->getOption('exclude') ?? ''), true) ?? [];
+        $include = json_decode((string) ($input->getOption('include') ?? ''), true) ?? [];
         $this->processTranslationFindConfig($exclude, $include);
-        $results = (new CodeAnalyzer($dirs, $this->translationFindConfig))->analyzeDirectories();
+        $results = (new LegacyCodeAnalyzer($dirs, $this->translationFindConfig))->analyzeDirectories();
         foreach ($results as $call) {
             $key = $call['key'];
             if ($key === 'dynamic_value' || !is_string($key)) {
@@ -81,7 +81,6 @@ class CheckTranslationsCommand extends Command
                         $call['call'] ?? ''
                     );
                 } else {
-                    // find plural bad key
                     $dictionaryTranslate = $dictionary[$key];
                     $pluralKey = $call['arg'] ?? null;
                     $pluralKeyInFile = $pluralKey ? '%' . $pluralKey . '%' : null;
@@ -116,6 +115,7 @@ class CheckTranslationsCommand extends Command
 
         $output->writeln('');
         $output->writeln('<comment>' . count($errors) . ' errors found</comment>');
+
         return count($errors);
     }
 
